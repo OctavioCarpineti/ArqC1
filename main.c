@@ -1,397 +1,487 @@
 //
-// Created by Octavio on 6/15/2024.
+// Created by Octavio Carpineti on 06/06/2024.
 //
-#include <curses.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
-// CONSTANTS
-#define PASSWORD "12345"
-#define QUIT_KEY 'q'
-#define DELAY_INTERVAL 250
-#define DEFAULT_DELAY 1000
+/*
+ * 1. BIBLIOTECAS
+ */
 
-unsigned int QUIT;
-size_t DELAY;
-size_t DELAY_1 = DEFAULT_DELAY;
-size_t DELAY_2 = DEFAULT_DELAY;
-size_t DELAY_3 = DEFAULT_DELAY;
-size_t DELAY_4 = DEFAULT_DELAY;
-size_t DELAY_5 = DEFAULT_DELAY;
+#include <stdio.h>          // Entrada/salida
+#include <stdlib.h>         // Para funciones de utilidad general
+#include <termios.h>        // Para la manipulación de la terminal
+#include <unistd.h>         // Para operaciones (empleada para la funcion sleep, por ejemplo)
+#include <stdbool.h>        // Para usar booleanos
+#include <fcntl.h>          // Control de archivos
+#include <ncurses.h>        // Para la manipulación de la terminal (ncurses)
+#include "EasyPIO.h"        // Para manipulación de GPIO (proporcionada por el profesor)
+#include "assembly_functions.h"  // Funciones en lenguaje ensamblador (depende de la implementación)
 
-void Delay(size_t a) {
-    a = a * 100000;
-    while (a--)
-        ;
-}
+/*
+ * 2. DECLARACIONES DE FUNCIONES A EMPLEAR
+ */
 
-void MoveCursorToOrigin() {
-    unsigned int i = 10;
-    while (i--)
-        printf("\033[F");
-}
+// Declaracion de funciones QUE SE MUESTRAN
+void disp_binary(unsigned char patron);
+void obtenerClave(char *password);
+void menuInicial();
+void autoFantastico();
+void choque();
+void pendulo(void);
+void mensajeTeclaDeDelay (void);
+void corroborarModificacionDelay(void);
 
-void Clear() {
-    printf("\033[2J");
-    MoveCursorToOrigin();
-}
+// Declaración de funciones relacionadas con la CONFIGURACION DE LA TERMINAL
+struct termios modificarConfiguracionDeTerminal(void);
+void restaurarConfiguracionDeTerminal(struct termios);
+bool presionDeTeclaAsignada(int indiceDeRetardo);
 
-unsigned int Login() {
-    char *right_password = PASSWORD;
-    char input[5];
-    int i = 0;
-    char c;
-    printf("Ingrese su password de 5 digitos: ");
 
-    while (1) {
-        c = getchar();
+// Declaración de funciones relacionadas con la CONFIGURACION DE PINES GPIO
+void configurarPin(void);
+void mostrarLed(unsigned char);
+int retardo(int indiceDeRetardo);
+void limpiarEntradaDelBuffer();
+void apagarLed();
 
-        if (c == '\n') {
-            input[i] = '\0';
-            break;
-        } else if (c == 127 || c == '\b') {
-            if (i > 0) {
-                i--;
-                printf("\b \b");
-            }
-        } else {
-            if (i < 5) {
-                printf("*");
-                input[i] = c;
-                i++;
+/*
+ * 3. DEFINICIONES
+ */
+
+// Definicion de casillas a emplear en la contrasena
+#define PASSWORD_LENGTH 5
+
+// Definicion de pines GPIO empeados, y tiempos de retardo
+const unsigned char led[] = {14, 15, 18, 23, 24, 25, 8, 7};
+int tiempoDeRetardo[] = {10000, 10000, 10000, 10000};
+
+/*
+ * 4. MAIN
+ */
+
+int main(void)
+{
+    configurarPin(); // Configura los pines GPIO según la definición del usuario (emplea pioInit(), para inicializar EasyPIO para la manipulación de GPIO)
+    char clavePredefinida[5] = {0, 9, 8, 7, 6}; // Predefinicion de clave
+    char claveIngresadaPorUsuario[5];
+
+    // Recepción y validación de la contraseña mediante BANDERAS
+    // Si se ingresan incorrectamente tres veces, se aborta el programa
+    for (int i = 0; i < 3; i++) {
+        bool passwordFlag = true;
+        obtenerClave(claveIngresadaPorUsuario);
+
+        for (int j = 0; j < 5; j++) {
+            if (clavePredefinida[j] != claveIngresadaPorUsuario[j]) {
+                passwordFlag = false;
+                break;
             }
         }
-        if (i == 5)
+
+        if (passwordFlag) {
+            printf("Bienvenido al sistema !\n\n");
+            menuInicial();
+            printf("Hasta luego !\n");
             break;
+        } else {
+            printf("Clave incorrecta\n\n");
+        }
+
+    }
+}
+
+//Función para mostrar el patrón de LEDs en formato binario
+void disp_binary(unsigned char patron)
+{
+    // Bucle para recorrer cada bit del patrón
+    for (int t = 128; t > 0; t >>= 1) {
+
+        /*
+        * Verificar si el bit actual está encendido (bit != 0: verdadero) o apagado (0: falso)
+        * La variable t comienza en: 128(10) = 10000000(2). La misma se desplaza un bit a la derecha (divide su posicion en funcion de 2) mediante el operador '>>=', hasta que t = 0.
+        * t = 0, cuando todos los bits han sido desplazados hacia la derecha.
+        * En la primera iteración, t representa el bit más significativo '(1 << 7)', y en la última iteración, t representa el bit menos significativo (1 << 0).
+        * Esto asegura que cada bit del patrón de LEDs sea probado en su respectiva posición,
+        */
+
+        if (patron & t)
+        {
+            /*
+            * (patron & t): Operador de bits AND a nivel de bit
+            * t se desplaza hacia la derecha en cada iteración del bucle for. De 128 (10000000) hasta 0.
+            * Si un bit específico de patron está activado y el bit correspondiente de t también está activado (es decir, ambos son 1)
+            * entonces el resultado de la operación AND será un número diferente de cero, lo que se evalúa como verdadero .
+            * En este caso, cuando el resultado de (patron & t) es diferente de cero (verdadero), significa que el bit correspondiente en patron está activado
+            *  lo que indica que el LED asociado está encendido.
+            */
+
+            printf("*"); // Imprimir un asterisco si el bit está encendido
+        } else
+        {
+            printf("-"); // Imprimir un guion si el bit está apagado
+        }
     }
 
-    input[i] = '\0';
+    printf("\n"); // Imprimir una nueva línea al final del patrón
+    printf("\r"); // Se presiona enter para continuar
+}
 
-    if (strcmp(input, right_password) == 0) {
-        printf("\n\n\rAccess Granted!\n\r");
+void obtenerClave(char *password)
+{
+    struct termios atributosPreviosDeTerminal;
+    atributosPreviosDeTerminal = modificarConfiguracionDeTerminal();
+
+    printf("Ingrese clave para poder acceder al sistema: ");
+
+    // Read the password
+    for (int i = 0; i < PASSWORD_LENGTH; i++)
+    {
+        password[i] = getchar();
+        printf("*"); // Print asterisk
+        fflush(stdout);
+    }
+
+    restaurarConfiguracionDeTerminal(atributosPreviosDeTerminal);
+
+    printf("\n");
+}
+
+void menuInicial()
+{
+
+    int opcion;
+    bool encendido = true;
+
+    do
+    {
+        limpiarEntradaDelBuffer();
+        printf("...MENU DE SECUENCIAS DE LEDS...\n");
+        printf("Opciones de secuencias. Seleccione que secuencia representar :\n");
+        printf("\t* 1. Choque\n");
+        printf("\t* 2. Auto fantastico\n");
+        printf("\t* 3. Carrera\n");
+        printf("\t* 4. Pendulo\n");
+        printf("\t* 5. Barra de carga\n");
+        printf("\t* 0. (salir)\n");
+        scanf("%d", &opcion);
+
+        switch (opcion) {
+            printf("---> ");
+            scanf("%d", &opcion);
+            switch (opcion) {
+                case 1:
+                    choque();
+                    break;
+                case 2:
+                    autoFantastico();
+                    break;
+                case 3:
+                    //chargeBar();
+                    break;
+                case 4:
+                    pendulo();
+                    break;
+                case 0:
+                    encendido = false;
+                    break;
+                default:
+                    printf("Opcion no valida!\n");
+                    printf("Por favor, ingrese una opcion valida\n");
+                    continue;
+            }
+        }
+        while (opcion != 0);
+    }
+}
+
+void autoFantastico()
+{
+
+    mensajeTeclaDeDelay();
+    printf("Auto Fantastico:\n");
+
+    unsigned char output;
+
+    while (true)
+    {
+        output = 0x80;
+        for (int i = 0; i < 8; i++)
+        {
+            mostrarLed(output);
+            disp_binary(output);
+            output = output >> 1;
+
+            if (retardo(0) == 0)
+            {
+                apagarLed();
+                return;
+            }
+        }
+
+        output = 0x2;
+
+        for (int i = 0; i < 6; i++)
+        {
+            mostrarLed(output);
+            disp_binary(output);
+            output = output << 1;
+
+            if (retardo(0) == 0)
+            {
+                apagarLed();
+                return;
+            }
+        }
+
+    }
+}
+
+
+void choque()
+{
+    mensajeTeclaDeDelay();
+    printf("Choque:\n");
+
+    // Definición de patrones iniciales para los LEDs
+    unsigned char ledIzquierdo;
+    unsigned char ledDerecho;
+    unsigned char patron;
+
+    while (true)
+    {
+        ledIzquierdo = 0x80; // LED izquierdo, encendido en la posición más a la izquierda (10000000 en binario)
+        ledDerecho = 0x1; // LED derecho, encendido en la posición más a la derecha (00000001 en binario)
+        for (int i = 0; i < 7; i++)
+        {
+            // Combina los patrones de ambos LEDs para obtener el patrón completo
+            patron = ledIzquierdo | ledDerecho;
+
+            mostrarLed(patron);
+            disp_binary(patron);
+
+            ledIzquierdo = ledIzquierdo >> 1; // Desplazar el LED izquierdo una posición a la izquierda
+            ledDerecho = ledDerecho << 1; // Desplazar el LED derecho una posición a la derecha
+            // Se terminan de desplazar, simulando la colision
+
+
+            /*
+            * El simbolo, en C : '<<' --> Indica desplazamiento a la derecha ('>>' <-- Desplazamiento a la izquierda)
+            * En este caso, como la variable es 'UNSIGNED', el desplazamiento es LOGICO.
+            * De no ser 'unsigned', seria un desplazamiento aritmetico, el cual CONSERVA EL BIT DE SIGNO.
+            * En este caso se modifica al usar 'unsigned', debido a que la secuencia es dada logicamente.
+            * De ser realizada mediante tabla, no variaria en caso de usar 'unsigned' o no
+            * Ya que la instruccion estaria dada en al memoria. No realiza un desplazamiento como tal
+            */
+
+            sleep(1); // Pausa final de 1 segundo antes de terminar
+
+            if (retardo(1) == 0)
+            {
+                apagarLed();
+                return;
+            }
+        }
+    }
+}
+
+void pendulo(void)
+{
+    mensajeTeclaDeDelay();
+    printf("Mostrando pendulo\n");
+
+    unsigned char patrones[14] =
+            {
+                    0x88, // *---*---
+                    0x48, // -*--*---
+                    0x28, // --*-*---
+                    0x18, // ---**---
+                    0x14, // ---*-*--
+                    0x12, // ---*--*-
+                    0x11, // ---*---*
+                    0x11, // ---*---*
+                    0x12, // ---*--*-
+                    0x14, // ---*-*--
+                    0x18, // ---**---
+                    0x28, // --*-*---
+                    0x48, // -*--*---
+                    0x88  // *---*---
+            };
+
+    //int indiceDeRetardo = 2; // Índice para controlar el retardo inicial
+
+    while (true)
+    {
+        // Mostrar la secuencia del péndulo y permitir ajuste de retardo
+        for (int i = 0; i < 14; i++)
+        {
+            disp_binary(patrones[i]); // Mostrar el patrón actual
+
+            // Esperar el tiempo definido en tiempoDeRetardo[indiceDeRetardo]
+            //usleep(tiempoDeRetardo[indiceDeRetardo]);
+
+            // Verificar si se presionó una tecla para ajustar el retardo
+            //if (presionDeTeclaAsignada(indiceDeRetardo)) {
+            //return; // Salir si se presiona la tecla de escape (ESC)
+
+            if (retardo(2) == 0)
+            {
+                apagarLed();
+                return;
+            }
+        }
+    }
+}
+}
+
+
+/*
+* Modifica la configuración de la terminal para desactivar el modo canónico y el eco.
+* Devuelve los atributos originales de la terminal para poder restaurarlos más tarde.
+*/
+struct termios modificarConfiguracionDeTerminal(void)
+{
+    struct termios atributosPreviosDeTerminal, atributosNuevosDeTerminal;
+
+    // Obtener los atributos actuales de la terminal
+    tcgetattr(STDIN_FILENO, &atributosPreviosDeTerminal);
+
+    // Copiar los atributos actuales a los nuevos atributos
+    atributosNuevosDeTerminal = atributosPreviosDeTerminal;
+
+    // Desactivar el modo canónico y el eco
+    atributosNuevosDeTerminal.c_lflag &= ~(ICANON | ECHO);
+
+    // Aplicar los nuevos atributos a la terminal
+    tcsetattr(STDIN_FILENO, TCSANOW, &atributosNuevosDeTerminal);
+
+    return atributosPreviosDeTerminal;
+}
+
+/*
+ * Restaura la configuración original de la terminal.
+ */
+void restaurarConfiguracionDeTerminal(struct termios)
+{
+    // Restaura los atributos originales de la terminal
+    tcsetattr(STDIN_FILENO, TCSANOW, &atributosPreviosDeTerminal);
+}
+
+bool presionDeTeclaAsignada(int indiceDeRetardo)
+{
+    struct termios atributosPreviosDeTerminal = modificarConfiguracionDeTerminal();
+    int caracter, oldf;
+
+    // Configurar el descriptor de archivo de la entrada estándar en modo no bloqueante
+    oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
+
+    // Lee un carácter de la entrada estándar
+    caracter = getchar();
+
+    /*
+    *'Flecha hacia abajo' es una tecla asignada ---> 66 = Flecha hacia abajo
+    *'Flecha hacia arriba' es una tecla asignada ---> 65 = Flecha hacia arriba
+    */
+    if (caracter == 65)
+    {
+        if (tiempoDeRetardo[indiceDeRetardo] > 1000)
+        {
+            tiempoDeRetardo[indiceDeRetardo] = tiempoDeRetardo[indiceDeRetardo] - 1000;
+        }
+    }  else if (caracter == 66)
+    {
+        tiempoDeRetardo[indiceDeRetardo] = tiempoDeRetardo[indiceDeRetardo] + 1000;
+    }
+
+    restaurarConfiguracionDeTerminal(oldattr);
+
+    // Restore the file descriptor mode
+    fcntl(STDIN_FILENO, F_SETFL, oldf);
+
+    // If esc key is hit, return 1
+    if (caracter == 27)
+    {
+        ungetc(caracter, stdin);
         return 1;
-    } else {
-        printf("\n\n\rAccess Denied!\n\r");
-        return 0;
+    }
+
+    // Esc wasn't hit, return 0
+    return 0;
+}
+
+void configurarPin(void)
+{
+    pioInit();
+
+    for (int i = 0; i < 8; i++)
+    {
+        pinMode(led[i], OUTPUT);
     }
 }
 
-void DisplayBinary(unsigned char DISPLAY, unsigned int option) {
-    char display[8];
-    int i = 0;
-    for (unsigned int POINTER = 0x80; POINTER > 0; POINTER = POINTER >> 1) {
-        if (POINTER & DISPLAY) {
-            display[i] = '*';
-            i++;
-        } else {
-            display[i] = '_';
-            i++;
-        }
+void mostrarLed(unsigned char output)
+{
+    for (int j = 0; j < 8; j++)
+    {
+        digitalWrite(led[j], (output >> j) & 1);
     }
 
-    switch (option) {
-        case 1:
-            printf(
-                    "\033[1;31mSECUENCIA:\033[0m \033[1;36mAuto Fantastico\033[0m\n\r\n\r");
-            break;
-        case 2:
-            printf("\033[1;31mSECUENCIA:\033[0m \033[1;36mEl Choque\033[0m\n\r\n\r");
-            break;
-        case 3:
-            printf("\033[1;31mSECUENCIA:\033[0m \033[1;36mEl Rebote\033[0m\n\r\n\r");
-            break;
-        case 4:
-            printf("\033[1;31mSECUENCIA:\033[0m \033[1;36mEl Espiral\033[0m\n\r\n\r");
-            break;
-        case 5:
-            printf("\033[1;31mSECUENCIA:\033[0m \033[1;36mEl Caos\033[0m\n\r\n\r");
-            break;
-        case 0:
-            break;
-    }
-
-    printf("%s\n\n\r\033[1;33mDELAY: \033[0m%d   ", display, DELAY);
-
-    if (option) {
-        printf("\n\r\n\r");
-        printf("\033[1;30mPresione la tecla Q para salir\033[0m");
-    }
-
-    MoveCursorToOrigin();
 }
 
-void *KeyListener() {
-    while (!QUIT) {
-        int key = getch();
-        if (key == QUIT_KEY)
-            QUIT = 1;
-        else if (key == KEY_UP) {
-            if (DELAY - DELAY_INTERVAL != 0)
-                DELAY -= DELAY_INTERVAL;
-        } else if (key == KEY_DOWN) {
-            DELAY += DELAY_INTERVAL;
+/*
+ * Cada secuencia se asocia con un indice de retardo particular, en lo que comprende al uso de la funcion de retardo
+ * Se utilizan diferentes índices en la función retardo para manejar retardos específicos de cada secuencia de luces.
+ * Esto permite que cada secuencia tenga su propio tiempo de retardo ajustable, lo cual es crucial para la personalización y control independiente de cada secuencia de luces.
+ */
+
+int retardo(int indiceDeRetardo)
+{
+    int i;
+    unsigned int j;
+
+    // Se repite el una cantidad de n veces (n = indiceDeRetardo)
+    for (i = tiempoDeRetardo[indiceDeRetardo]; i > 0; --i)
+
+        if (presionDeTeclaAsignada(indiceDeRetardo)) {
+            return 0;
         }
-    }
+
+    return 1;
 }
 
-void *AutoFantastico() {
-    Clear();
-    while (!QUIT) {
-        unsigned char DISPLAY = 0x80;
-        for (int i = 0; i < 7; i++) {
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 1);
-            DISPLAY = DISPLAY >> 1;
-            Delay(DELAY);
+void mensajeTeclaDeDelay (void)
+{
+    printf("Presione esc para finalizar la secuencia\n");
+    printf("Presione W para aumentar la velocidad\n");
+    printf("Presione S para disminuir la velocidad\n");
+}
+
+void corroborarModificacionDelay(void)
+{
+    // Verificar si se presionó W (aumentar retardo) o S (disminuir retardo)
+    int ch = getchar();
+    if (ch == 'w' || ch == 'W') {
+        if (delayIndex > 0) {
+            delayIndex--; // Reducir el índice de retardo si es posible
         }
-        for (int i = 0; i < 7; i++) {
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 1);
-            DISPLAY = DISPLAY << 1;
-            Delay(DELAY);
+    } else if (ch == 's' || ch == 'S') {
+        if (delayIndex < 3) {
+            delayIndex++; // Aumentar el índice de retardo si es posible
         }
     }
 }
 
-void *ElChoque() {
-    Clear();
-    while (!QUIT) {
-        unsigned char SUB_DISPLAY_1 = 0x80;
-        unsigned char SUB_DISPLAY_2 = 0x01;
-        unsigned char DISPLAY = 0;
-
-        for (int i = 0; i < 7; i++) {
-            DISPLAY = SUB_DISPLAY_1 + SUB_DISPLAY_2;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 2);
-            SUB_DISPLAY_1 = SUB_DISPLAY_1 >> 1;
-            SUB_DISPLAY_2 = SUB_DISPLAY_2 << 1;
-            Delay(DELAY);
-        }
+void limpiarEntradaDelBuffer()
+{
+    printf('"ENTER" para continuar...\n');
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF)
+    {
+        // Descartar cambios
     }
 }
 
-void *ElRebote() {
-    Clear();
-    while (!QUIT) {
-        unsigned char DISPLAY = 0x80;
-
-        for (int r = 7; r > 0; r--) {
-            for (DISPLAY; DISPLAY != 0b1; DISPLAY = DISPLAY >> 1) {
-                if (QUIT)
-                    break;
-                DisplayBinary(DISPLAY, 3);
-                Delay(DELAY);
-            }
-            for (int j = 0; j < r - 1; j++) {
-                if (QUIT)
-                    break;
-                DisplayBinary(DISPLAY, 3);
-                DISPLAY = DISPLAY << 1;
-                Delay(DELAY);
-            }
-        }
-        if (QUIT)
-            break;
-        DisplayBinary(DISPLAY, 3);
-        Delay(DELAY);
-    }
-}
-
-void *ElEspiral() {
-    Clear();
-    unsigned char DISPLAY = 0;
-
-    DisplayBinary(DISPLAY, 4);
-
-    while (!QUIT) {
-        unsigned char SUB_DISPLAY_1 = 0x80;
-        unsigned char SUB_DISPLAY_2 = 0x01;
-        DISPLAY = 0;
-
-        for (int i = 0; i < 4; i++) {
-            DISPLAY += SUB_DISPLAY_1;
-            SUB_DISPLAY_1 = SUB_DISPLAY_1 >> 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 4);
-            Delay(DELAY);
-            DISPLAY += SUB_DISPLAY_2;
-            SUB_DISPLAY_2 = SUB_DISPLAY_2 << 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 4);
-            Delay(DELAY);
-        }
-        for (int i = 0; i < 4; i++) {
-            DISPLAY -= SUB_DISPLAY_2;
-            SUB_DISPLAY_2 = SUB_DISPLAY_2 << 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 4);
-            Delay(DELAY);
-            DISPLAY -= SUB_DISPLAY_1;
-            SUB_DISPLAY_1 = SUB_DISPLAY_1 >> 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 4);
-            Delay(DELAY);
-        }
-    }
-}
-
-void *ElCaos() {
-    Clear();
-    unsigned char DISPLAY = 0;
-    while (!QUIT) {
-        unsigned char SUB_DISPLAY_1 = 0x80;
-        unsigned char SUB_DISPLAY_2 = 0x01;
-
-        for (int i = 0; i < 4; i++) {
-            DISPLAY += SUB_DISPLAY_1;
-            SUB_DISPLAY_1 = SUB_DISPLAY_1 >> 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 5);
-            Delay(DELAY);
-            DISPLAY += SUB_DISPLAY_2;
-            SUB_DISPLAY_2 = SUB_DISPLAY_2 << 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 5);
-            Delay(DELAY);
-        }
-        for (int i = 0; i < 4; i++) {
-            DISPLAY -= SUB_DISPLAY_2;
-            SUB_DISPLAY_2 = SUB_DISPLAY_2 >> 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 5);
-            Delay(DELAY);
-            DISPLAY -= SUB_DISPLAY_1;
-            SUB_DISPLAY_1 = SUB_DISPLAY_1 << 1;
-            if (QUIT)
-                break;
-            DisplayBinary(DISPLAY, 5);
-            Delay(DELAY);
-        }
-    }
-}
-
-void App() {
-    unsigned char option[1];
-    Clear();
-
-    int i = 0;
-    for (i; i < 3; i++) {
-        Delay(2000);
-        Clear();
-        if (Login())
-            break;
-    }
-
-    if (i == 3)
-        exit(0);
-
-    do {
-        Delay(2000);
-        DisplayBinary(0, 0);
-        Clear();
-        QUIT = 0;
-
-        printf("------ S E C U E N C I A S  D E  L U C E S ------\n\r");
-        printf("1. Auto Fantastico\n\r");
-        printf("2. El Choque\n\r");
-        printf("3. El Rebote\n\r");
-        printf("4. El Espiral\n\r");
-        printf("5. El Caos\n\r");
-        printf("0. Salir\n\r");
-        printf("-------------------------------------------------\n\r");
-        printf("\n\rSeleccione una opcion: ");
-
-        option[0] = getchar();
-
-        if (option[1] != '\0') {
-            option[0] = 'i';
-        }
-
-        printf("\033[?25l");
-
-        pthread_t threads[2];
-
-        switch (option[0]) {
-
-            case '1':
-                DELAY = DELAY_1;
-                pthread_create(&threads[0], NULL, KeyListener, NULL);
-                pthread_create(&threads[1], NULL, AutoFantastico, NULL);
-                pthread_join(threads[0], NULL);
-                pthread_join(threads[1], NULL);
-                DELAY_1 = DELAY;
-
-                break;
-            case '2':
-                DELAY = DELAY_2;
-                pthread_create(&threads[0], NULL, KeyListener, NULL);
-                pthread_create(&threads[1], NULL, ElChoque, NULL);
-                pthread_join(threads[0], NULL);
-                pthread_join(threads[1], NULL);
-                DELAY_2 = DELAY;
-
-                break;
-            case '3':
-                DELAY = DELAY_3;
-                pthread_create(&threads[0], NULL, KeyListener, NULL);
-                pthread_create(&threads[1], NULL, ElRebote, NULL);
-                pthread_join(threads[0], NULL);
-                pthread_join(threads[1], NULL);
-                DELAY_3 = DELAY;
-
-                break;
-            case '4':
-                DELAY = DELAY_4;
-                pthread_create(&threads[0], NULL, KeyListener, NULL);
-                pthread_create(&threads[1], NULL, ElEspiral, NULL);
-                pthread_join(threads[0], NULL);
-                pthread_join(threads[1], NULL);
-                DELAY_4 = DELAY;
-
-                break;
-            case '5':
-                DELAY = DELAY_5;
-                pthread_create(&threads[0], NULL, KeyListener, NULL);
-                pthread_create(&threads[1], NULL, ElCaos, NULL);
-                pthread_join(threads[0], NULL);
-                pthread_join(threads[1], NULL);
-                DELAY_5 = DELAY;
-
-                break;
-            case '0':
-                printf("\n\n\rSaliendo del programa...\n\r");
-                Delay(2000);
-                Clear();
-                exit(0);
-                break;
-            default:
-                printf("\n\n\rIngrese una opcion valida\n\r");
-                break;
-        }
-    } while (1);
-}
-
-int main() {
-    initscr();             // Inicializar la pantalla de ncurses
-    keypad(stdscr, TRUE);  // Habilitar la entrada de teclado especial
-    nodelay(stdscr, TRUE); // Configurar getch() para no bloquear
-    noecho();
-    cbreak();
-
-    App();
-
-    endwin();
+void apagarLed()
+{
+    unsigned char apagar = 0x0;
+    mostrarLed(apagar);
 }

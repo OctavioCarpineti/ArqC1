@@ -39,7 +39,7 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "ArqC1::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-ArqC1-Debug-efcfb887b74f05a29c12.json",
+					"jsonFile" : "target-ArqC1-Debug-02db16bbd20589319088.json",
 					"name" : "ArqC1",
 					"projectIndex" : 0
 				}
@@ -49,12 +49,12 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "D:/UCC Ciclo Avanzado/3ero/Arquitectura de computadoras/Arq 1/Proyecto/ArqC1/cmake-build-debug",
-		"source" : "D:/UCC Ciclo Avanzado/3ero/Arquitectura de computadoras/Arq 1/Proyecto/ArqC1"
+		"build" : "C:/Users/octav/Desktop/ArqC1/ArqC1/cmake-build-debug",
+		"source" : "C:/Users/octav/Desktop/ArqC1/ArqC1"
 	},
 	"version" : 
 	{
 		"major" : 2,
-		"minor" : 4
+		"minor" : 6
 	}
 }
