@@ -14,7 +14,7 @@
 #include <fcntl.h>          // Control de archivos
 #include <ncurses.h>        // Para la manipulación de la terminal (ncurses)
 #include "EasyPIO.h"        // Para manipulación de GPIO (proporcionada por el profesor)
-#include "assembly_functions.h"  // Funciones en lenguaje ensamblador (depende de la implementación)
+//#include "assembly_functions.h"  // Funciones en lenguaje ensamblador (depende de la implementación)
 
 /*
  * 2. DECLARACIONES DE FUNCIONES A EMPLEAR
@@ -28,7 +28,6 @@ void autoFantastico();
 void choque();
 void pendulo(void);
 void mensajeTeclaDeDelay (void);
-void corroborarModificacionDelay(void);
 
 // Declaración de funciones relacionadas con la CONFIGURACION DE LA TERMINAL
 struct termios modificarConfiguracionDeTerminal(void);
@@ -64,12 +63,12 @@ int main(void)
     char clavePredefinida[5] = {0, 9, 8, 7, 6}; // Predefinicion de clave
     char claveIngresadaPorUsuario[5];
 
-    // Recepción y validación de la contraseña mediante BANDERAS
-    // Si se ingresan incorrectamente tres veces, se aborta el programa
+    //Recepción y validación de la contraseña mediante BANDERAS
+    //Si se ingresan incorrectamente tres veces, se aborta el programa
     for (int i = 0; i < 3; i++) {
         bool passwordFlag = true;
         obtenerClave(claveIngresadaPorUsuario);
-
+        printf("Clave %c\n\n", claveIngresadaPorUsuario[0]);
         for (int j = 0; j < 5; j++) {
             if (clavePredefinida[j] != claveIngresadaPorUsuario[j]) {
                 passwordFlag = false;
@@ -85,7 +84,7 @@ int main(void)
         } else {
             printf("Clave incorrecta\n\n");
         }
-
+//
     }
 }
 
@@ -189,8 +188,8 @@ void menuInicial()
                     continue;
             }
         }
-        while (opcion != 0);
-    }
+    }while (opcion != 0);
+
 }
 
 void autoFantastico()
@@ -327,9 +326,10 @@ void pendulo(void)
                 apagarLed();
                 return;
             }
+
         }
     }
-}
+
 }
 
 
@@ -361,6 +361,7 @@ struct termios modificarConfiguracionDeTerminal(void)
  */
 void restaurarConfiguracionDeTerminal(struct termios)
 {
+    struct termios atributosPreviosDeTerminal;
     // Restaura los atributos originales de la terminal
     tcsetattr(STDIN_FILENO, TCSANOW, &atributosPreviosDeTerminal);
 }
@@ -392,7 +393,7 @@ bool presionDeTeclaAsignada(int indiceDeRetardo)
         tiempoDeRetardo[indiceDeRetardo] = tiempoDeRetardo[indiceDeRetardo] + 1000;
     }
 
-    restaurarConfiguracionDeTerminal(oldattr);
+    restaurarConfiguracionDeTerminal(atributosPreviosDeTerminal);
 
     // Restore the file descriptor mode
     fcntl(STDIN_FILENO, F_SETFL, oldf);
@@ -455,26 +456,13 @@ void mensajeTeclaDeDelay (void)
     printf("Presione S para disminuir la velocidad\n");
 }
 
-void corroborarModificacionDelay(void)
-{
-    // Verificar si se presionó W (aumentar retardo) o S (disminuir retardo)
-    int ch = getchar();
-    if (ch == 'w' || ch == 'W') {
-        if (delayIndex > 0) {
-            delayIndex--; // Reducir el índice de retardo si es posible
-        }
-    } else if (ch == 's' || ch == 'S') {
-        if (delayIndex < 3) {
-            delayIndex++; // Aumentar el índice de retardo si es posible
-        }
-    }
-}
+
 
 void limpiarEntradaDelBuffer()
 {
     printf('"ENTER" para continuar...\n');
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF)
+    int caracter;
+    while ((caracter = getchar()) != '\n' && caracter != EOF)
     {
         // Descartar cambios
     }
